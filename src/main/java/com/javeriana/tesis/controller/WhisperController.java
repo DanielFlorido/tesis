@@ -17,7 +17,7 @@ public class WhisperController {
     private WhisperService whisperService;
 
     @PostMapping("/transcription")
-    public ResponseEntity<String> transcribirAudio(@RequestParam("formData") MultipartFile file) {
-        return whisperService.transcribirAudio(file);
+    public ResponseEntity<String> transcribirAudio(@RequestParam("formData") MultipartFile file, @RequestParam("id") Long id) {
+        return whisperService.transcribirAudio(file, id);
     }
 }
