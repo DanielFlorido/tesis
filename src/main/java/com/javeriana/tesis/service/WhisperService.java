@@ -1,19 +1,21 @@
 package com.javeriana.tesis.service;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.javeriana.tesis.model.TranscriptionTask;
-
-import jakarta.annotation.PostConstruct;
+import com.javeriana.tesis.Dto.TranscriptionResponseDto;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 
 @Service
 public class WhisperService {
@@ -21,43 +23,52 @@ public class WhisperService {
     private static final String UPLOAD_DIR = System.getProperty("user.home") + "/Desktop/audios";
     private static final String SCRIPT_PATH = "C:\\\\Users\\\\JAMES MORIARTY\\\\Desktop\\\\WhisperTranscriptor\\\\Transcriptor.py";
 
-    private final BlockingQueue<TranscriptionTask> queue = new LinkedBlockingQueue<>();
 
-    @PostConstruct
-    public void init() {
-        // Hilo que consume tareas de la cola
-        Thread worker = new Thread(() -> {
-            while (true) {
-                try {
-                    TranscriptionTask task = queue.take();
-                    String result = ejecutarWhisperTranscription(task.getFilePath());
-                    task.getResultFuture().complete(result);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        worker.setDaemon(true);
-        worker.start();
-    }
+    private final RestTemplate restTemplate = new RestTemplate();
 
-    public ResponseEntity<String> transcribirAudio(MultipartFile file) {
-        if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body("El archivo está vacío");
-        }
+    @Value("${backend.transcription.url}")
+    private String otroBackendUrl;
+
+    public void enviarTranscripcion(TranscriptionResponseDto dto) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<TranscriptionResponseDto> request = new HttpEntity<>(dto, headers);
 
         try {
-            // Asegura que el directorio exista
-            Files.createDirectories(Paths.get(UPLOAD_DIR));
+            ResponseEntity<String> response = restTemplate.postForEntity(otroBackendUrl, request, String.class);
+            System.out.println("Respuesta del otro backend: " + response.getBody());
+        } catch (Exception e) {
+            System.err.println("Error al enviar al otro backend: " + e.getMessage());
+        }
+    }
 
-            // Guarda el archivo
+    @Async
+    public void procesarAsync(MultipartFile file, Long id, Path filePath) {
+        try {
+            String resultado = ejecutarWhisperTranscription(filePath);
+            TranscriptionResponseDto dto = new TranscriptionResponseDto(id, filePath.toString(), resultado);
+            enviarTranscripcion(dto);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public ResponseEntity<String> transcribirAudio(MultipartFile file, Long id) {
+        if (file.isEmpty() || id <= 0) {
+            return ResponseEntity.badRequest().body("Archivo o ID inválido");
+        }
+    
+        try {
+            Files.createDirectories(Paths.get(UPLOAD_DIR));
             Path filePath = Paths.get(UPLOAD_DIR, file.getOriginalFilename());
             Files.write(filePath, file.getBytes());
-
-            // Llama a la transcripción
-            String resultado = ejecutarWhisperTranscription(filePath);
-            return ResponseEntity.ok(resultado);
-
+    
+            // Procesamiento en segundo plano
+            procesarAsync(file, id, filePath);
+    
+            // Respuesta inmediata
+            return ResponseEntity.ok("Archivo recibido. Transcripción en proceso.");
+    
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error al subir archivo");
         }
