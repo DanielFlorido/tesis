@@ -20,8 +20,8 @@ import java.nio.file.*;
 @Service
 public class WhisperService {
 
-    private static final String UPLOAD_DIR = System.getProperty("user.home") + "/Desktop/audios";
-    private static final String SCRIPT_PATH = "C:\\\\Users\\\\JAMES MORIARTY\\\\Desktop\\\\WhisperTranscriptor\\\\Transcriptor.py";
+    private static final String UPLOAD_DIR = "audios";
+    private static final String SCRIPT_PATH = "WhisperTranscriptor/Transcriptor.py";
 
 
     private final RestTemplate restTemplate = new RestTemplate();
