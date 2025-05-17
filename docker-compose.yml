@@ -1,0 +1,14 @@
+services:
+  java-backend:
+    build:
+      context: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - python-microservice
+
+  python-microservice:
+    build:
+      context: ./WhisperTranscriptor
+    ports:
+      - "8000:8000"

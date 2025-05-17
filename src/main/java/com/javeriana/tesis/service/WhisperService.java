@@ -11,23 +11,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+
 import com.javeriana.tesis.Dto.TranscriptionResponseDto;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.Map;
 
 @Service
 public class WhisperService {
 
-    private static final String UPLOAD_DIR = System.getProperty("user.home") + "/Desktop/audios";
-    private static final String SCRIPT_PATH = "C:\\\\Users\\\\JAMES MORIARTY\\\\Desktop\\\\WhisperTranscriptor\\\\Transcriptor.py";
-
+    private static final String UPLOAD_DIR = "audios";
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${backend.transcription.url}")
     private String otroBackendUrl;
+
+    @Value("${whisper.microservice.url:http://python-microservice:8000/transcribe}")
+    private String whisperMicroserviceUrl;
 
     public void enviarTranscripcion(TranscriptionResponseDto dto) {
         HttpHeaders headers = new HttpHeaders();
@@ -45,7 +51,8 @@ public class WhisperService {
     @Async
     public void procesarAsync(MultipartFile file, Long id, Path filePath) {
         try {
-            String resultado = ejecutarWhisperTranscription(filePath);
+            String resultado = enviarAudioAMicroservicio(file);
+            System.out.println("Transcripción recibida: " + resultado); // <-- Agrega esto
             TranscriptionResponseDto dto = new TranscriptionResponseDto(id, filePath.toString(), resultado);
             enviarTranscripcion(dto);
         } catch (Exception e) {
@@ -57,57 +64,44 @@ public class WhisperService {
         if (file.isEmpty() || id <= 0) {
             return ResponseEntity.badRequest().body("Archivo o ID inválido");
         }
-    
+
         try {
             Files.createDirectories(Paths.get(UPLOAD_DIR));
             Path filePath = Paths.get(UPLOAD_DIR, file.getOriginalFilename());
             Files.write(filePath, file.getBytes());
-    
+
             // Procesamiento en segundo plano
             procesarAsync(file, id, filePath);
-    
+
             // Respuesta inmediata
             return ResponseEntity.ok("Archivo recibido. Transcripción en proceso.");
-    
+
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error al subir archivo");
         }
     }
 
-    private String ejecutarWhisperTranscription(Path path) {
-        StringBuilder output = new StringBuilder();
-        StringBuilder errorOutput = new StringBuilder();
+    private String enviarAudioAMicroservicio(MultipartFile file) throws IOException {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder("python", SCRIPT_PATH, path.toString());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            BufferedReader stdInput = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-            BufferedReader stdError = new BufferedReader(
-                new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8));
-
-            String line;
-            while ((line = stdInput.readLine()) != null) {
-                output.append(line).append("\n");
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("audio", new ByteArrayResource(file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return file.getOriginalFilename();
             }
+        });
 
-            while ((line = stdError.readLine()) != null) {
-                errorOutput.append(line).append("\n");
-            }
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-            int exitCode = process.waitFor();
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                whisperMicroserviceUrl, requestEntity, Map.class);
 
-            System.out.println("Errores (si los hay):");
-            System.out.println(errorOutput.toString());
-            System.out.println("El script terminó con código: " + exitCode);
-            System.out.println("Salida del script: " + output.toString());
-
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+            return (String) response.getBody().get("text");
+        } else {
+            throw new IOException("Error al transcribir audio: " + response.getStatusCode());
         }
-
-        return output.toString();
     }
 }
