@@ -6,6 +6,8 @@ services:
       - "8080:8080"
     depends_on:
       - python-microservice
+    volumes:
+      - ./audios:/app/audios
 
   python-microservice:
     build:
