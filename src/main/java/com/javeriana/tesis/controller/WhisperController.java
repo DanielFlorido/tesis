@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/whisper")
-@CrossOrigin(origins = "http://localhost:4200")
+@CrossOrigin()
 @EnableAsync
 public class WhisperController {
 
