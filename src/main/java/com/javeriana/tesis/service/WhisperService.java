@@ -49,11 +49,11 @@ public class WhisperService {
     }
 
     @Async
-    public void procesarAsync(MultipartFile file, Long id, Path filePath) {
+    public void procesarAsync(MultipartFile file, Long id, String filePath) {
         try {
             String resultado = enviarAudioAMicroservicio(file);
             System.out.println("Transcripción recibida: " + resultado); // <-- Agrega esto
-            TranscriptionResponseDto dto = new TranscriptionResponseDto(id, filePath.toString(), resultado);
+            TranscriptionResponseDto dto = new TranscriptionResponseDto(id, filePath, resultado);
             enviarTranscripcion(dto);
         } catch (Exception e) {
             e.printStackTrace();
@@ -71,7 +71,7 @@ public class WhisperService {
             Files.write(filePath, file.getBytes());
 
             // Procesamiento en segundo plano
-            procesarAsync(file, id, filePath);
+            procesarAsync(file, id, file.getOriginalFilename());
 
             // Respuesta inmediata
             return ResponseEntity.ok("Archivo recibido. Transcripción en proceso.");

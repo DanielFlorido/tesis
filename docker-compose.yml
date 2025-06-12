@@ -1,14 +1,26 @@
 services:
   java-backend:
+    container_name: java-backend
     build:
       context: .
     ports:
-      - "8080:8080"
+      - "8081:8081"
     depends_on:
       - python-microservice
+    volumes:
+      - C:\Users\JAMES MORIARTY\Documents/Transcripciones:/app/audios
+    networks:
+      - app-network
 
   python-microservice:
+    container_name: python-microservice
     build:
       context: ./WhisperTranscriptor
     ports:
       - "8000:8000"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true
